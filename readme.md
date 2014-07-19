@@ -1,8 +1,8 @@
 ### FinderMaker ###
 
-*Author: Isaac Shivvers*
-
-*Date:   July 2014*
+*Isaac Shivvers,
+July 2014,
+ishivvers@berkeley.edu*
 
 This is an interactive Python code to create nice finder charts
  with offset stars.  To use this, you need a fits image with
