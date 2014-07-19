@@ -1,6 +1,7 @@
 ### FinderMaker ###
 
 *Author: Isaac Shivvers*
+
 *Date:   July 2014*
 
 This is an interactive Python code to create nice finder charts
