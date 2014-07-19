@@ -1,11 +1,11 @@
 ### FinderMaker ###
 
-__Author: Isaac Shivvers__
-__Date:   July 2014__
+*Author: Isaac Shivvers*
+*Date:   July 2014*
 
 This is an interactive Python code to create nice finder charts
  with offset stars.  To use this, you need a fits image with
- your object clearly detected or the (accurrate!) coordinates
+ your object clearly detected or the (accurate!) coordinates
  of your object.
 
 
