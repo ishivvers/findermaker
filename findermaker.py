@@ -4,12 +4,12 @@ A finder chart maker.
 
 To Do:
  - verify that astrometry.net upload works properly
- - calculate offsets
- - get it all to look nice and pretty
 """
 
 import aplpy
 import os
+import time
+from subprocess import Popen, PIPE
 from astro import coord
 from astrometryClient.client import Client as anClient
 import pyfits as pf
@@ -18,12 +18,41 @@ import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
 from scipy.optimize import leastsq
 
+# a hackaround for a compass rose in aplpy
+def initCompass(self, parent):
+    self._ax1 = parent._ax1
+    self._wcs = parent._wcs
+    self.world2pixel = parent.world2pixel
+    self.pixel2world = parent.pixel2world
+    self._initialize_compass()
+aplpy.overlays.Compass.__init__ = initCompass
+
+# define some pretty colors
+red = '#990000'
+blue = '#0000FF'
+green = '#006600'
+orange = '#996600'
 
 class FinderMaker(object):
-    
-    def __init__(self, image=None, ra=None, dec=None):
+    """
+    A class to make finder charts.
+
+    image: path to input image
+    ra,dec: coordinates of object
+    name: name of object
+    diagnostics: if True, will plot diagnostic plots of the fit to each star's location
+
+    NOTE: Either (ra, dec) OR image must be given (both is ok too).  Will use astrometry.net to find WCS solution
+     for any image without one.  If (ra, dec) not given, the object of interest must be clearly discernable
+     from the background in the given image.
+    """    
+    def __init__(self, image=None, ra=None, dec=None, name=None, diagnostics=False):
+        self.name = name
+        self.diagnostics = diagnostics
+        self.annotations = []
+        # make sure we have one of the allowed input combinations
         if image != None:
-            if image.rsplit('.')[1].lower() != 'fits':
+            if image.rsplit('.')[-1].lower() != 'fits':
                 raise ValueError('Image must be in fits format.')
             else:
                 self.image = image
@@ -54,56 +83,73 @@ class FinderMaker(object):
             if header.get('WCSAXES') == None:
                 self.get_astrometry()
         self.build_plot()
-        raw_input('ready?')
         if (self.ra == self.dec == None):
             # have the user choose the object 
-            print 'You must choose a target.'
-            self.ra, self.dec = self.get_star()
-        self.add_target( self.ra, self.dec, wcs=True, marker='a' )
-        # have the user choose up to 3 offset stars
-        # self.offset_stars = []
-        # for i in range(3):
-        #     if i == 0:
-        #         print 'Choose the first offset star.'
-        #     else:
-        #         inn = raw_input('Hit enter to choose the next offset star, or type "d" to be done.')
-        #         if 'd' in inn.lower():
-        #             break
-        #     ra,dec = self.get_star()
-        #     self.add_target( ra, dec, wcs=True, marker=['s','c','d'][i] )
-        #     self.offset_stars.append( [ra,dec] )
+            raw_input( '\n\nHit enter and then identify the target.\n\n' )
+            while True:
+                res = self.get_star()
+                if res != None:
+                    self.ra, self.dec = res
+                    break
+                else:
+                    print "\nThat didn't work. Try again.\n"
+        self.add_object( self.ra, self.dec, wcs=True, marker='a' )
+        self.add_offset_stars()
     
     def get_astrometry(self):
         """
-        Interact with astrometry.net to get the WCS for our image.
+        Interact with astrometry.net to get the WCS for our image, using the 
+         astrometry client code.
         """
         # connect to astrometry.net
         supernova_key = 'jhvrmcmwgufgmsrw'
         supernova_url = 'http://supernova.astrometry.net/api/'
         nova_key = 'tugzsuwnbcykkeuy'
         nova_url = 'http://nova.astrometry.net/api/'
-        new_image = self.image.rsplit('.')[0] + '.wcs.' + self.image.rsplit('.')[1]
+        new_image = self.image.replace('.fits','.wcs.fits')
+
+        # The short routines below are pulled from astrometryClient/client.py in the __main__
         c = anClient(apiurl=nova_url)
         c.login(nova_key)
         
         # upload the image
-        upres = c.upload(self.image)
+        print '\n\nUploading image to astrometry.net\n\n'
+        kwargs = {'publicly_visible': 'y', 'allow_modifications': 'd', 'allow_commercial_use': 'd'}
+        upres = c.upload(self.image, **kwargs)
         stat = upres['status']
         if stat != 'success':
-            raise IOError('Upload failed: status %s\n %s\n' %(stat, str(upres)))
-        self.anID = upres['subid']
-        print 'upload successful. job id:',self.anID
+            raise IOError('Upload failed: status %s\n %s\n' %(str(stat), str(upres)))
+        subID = upres['subid']
+        print '\n\nUpload successful. Submission id:',subID,'\n\n'
         
-        # wait for the response
-        print 'waiting for response ...',
+        # Wait for the response
         while True:
-            stat = c.sub_status(self.anID, justdict=True)
-            if stat.get('status','') == 'success':
+            stat = c.sub_status(subID, justdict=True)
+            jobs = stat.get('jobs', [])
+            if len(jobs):
+                for j in jobs:
+                    if j is not None:
+                        break
+                if j is not None:
+                    print '\n\nReceived job id',j,'\n\n'
+                    jobID = j
+                    break
+            time.sleep(5)
+
+        # wait for the calculation to finish
+        success = False
+        while True:
+            stat = c.job_status(jobID, justdict=True)
+            if stat.get('status','') in ['success']:
+                success = (stat['status'] == 'success')
                 break
-            print '.',
+            time.sleep(5)
+        if not success:
+            raise IOError('astrometry.net query failed: status %s'%str(stat))
         
         # download the new image
-        url = nova_url.replace('api','new_fits_file/%i' %self.anID)
+        print '\n\nGrabbing solved image\n\n'
+        url = nova_url.replace('api','new_fits_file/%i' %jobID)
         cmd = 'wget -O %s %s' %(new_image, url)
         os.system( cmd )
         self.image = new_image
@@ -125,9 +171,15 @@ class FinderMaker(object):
         """
         self.hdu = pf.open( self.image )
         # assume, from here on out, that the first table is the relevant one
-        self.fig = aplpy.FITSFigure( data=self.hdu )
-        self.fig.show_grayscale(stretch='log')
+        self.fig = aplpy.FITSFigure( self.image )
+        self.fig.show_grayscale(stretch='log', invert=True)
+        self.fig.compass = aplpy.overlays.Compass(self.fig)
+        self.fig.compass.show_compass(color='black', corner=2, length=0.1)
         self.fig.show_grid()
+        self.fig.grid.set_color('k')
+        self.fig.grid.set_alpha(0.25)
+        if self.name != None:
+            plt.title(self.name)
     
     def _gauss2D(self, params, x, y):
         A, x0, y0, sigmaX, sigmaY, C = params
@@ -136,7 +188,7 @@ class FinderMaker(object):
     def _gauss2D_residuals(self, params, z, x, y):
         return z - self._gauss2D(params, x, y) 
         
-    def get_star(self, cutout=10.0, error_plot=True):
+    def get_star(self, cutout=10.0, error_plot=None):
         """
         Get a single star from the user interacting with the image.
         Star must be bright enough to fit a Gaussian to it!
@@ -144,6 +196,8 @@ class FinderMaker(object):
         Returns best-fit coordinates (in WCS).
         If error_plot == True, will plot up cutout and the best-fit Gaussian.
         """
+        if error_plot == None:
+            error_plot = self.diagnostics
         # convert arcseconds into degrees
         cutout = cutout/3600.0
         print "Click on the object."
@@ -163,7 +217,7 @@ class FinderMaker(object):
         XX,YY = np.meshgrid( X,Y )
         # now fit a 2D Gaussian to it
         maximum = np.max(subarray)
-        inparams = [maximum, x,y, w/2, w/2, np.median(subarray)] # amp, x, y, sigx, sigy, constant
+        inparams = [maximum, x,y, w/5, w/5, np.median(subarray)] # amp, x, y, sigx, sigy, constant
         # need to make everything 1D
         X = XX.reshape( XX.shape[0]*XX.shape[1] )
         Y = YY.reshape( YY.shape[0]*YY.shape[1] )
@@ -189,7 +243,7 @@ class FinderMaker(object):
                 plt.sca( curax )
             return ra, dec
         
-    def add_target(self, x, y, wcs=False, marker='s', w=0.005):
+    def add_object(self, x, y, wcs=False, marker='s', s=10.0, center=None):
         """
         Marks the target (at pixel number x,y) on the plot.
         If WCS == True, x,y must be in WCS.
@@ -197,36 +251,93 @@ class FinderMaker(object):
          's': a green square
          'c': a blue circle
          'a': two red arrows
-         'd': an orange diamond
-        w is the size scale for each marker
+         'd': an purple diamond
+        s is the size scale for each marker (in pixels)
+        if center is True, will place a small cross on the object's center
         """
+        if center == None:
+            center = self.diagnostics
         if wcs:
             ra,dec = x,y
+            x,y = self.fig.world2pixel( ra, dec )
         else:
             ra,dec = self.fig.pixel2world( x, y )
+        # find the width and height in RA,Dec coords
+        r2,d2 = self.fig.pixel2world( x+s,y+s )
+        w = np.abs(r2 - ra)
+        h = np.abs(d2 - dec)
+        # now make your mark
         if marker == 's':
-            self.fig.show_rectangles( [ra], [dec], 2*w, 2*w, color='green', lw=3 )
-            self.fig.show_markers( ra, dec, marker='+', c='green' )
+            self.fig.show_rectangles( [ra], [dec], 2*h, 2*w, color=green, lw=3, layer='s1' )
+            if center: self.fig.show_markers( ra, dec, marker='+', c=green, layer='s2' )
         elif marker == 'c':
-            self.fig.show_circles( [ra], [dec], w, color='blue', lw=3 )
-            self.fig.show_markers( ra, dec, marker='+', c='blue' )
+            self.fig.show_circles( [ra], [dec], w, color=blue, lw=3, layer='c1' )
+            if center: self.fig.show_markers( ra, dec, marker='+', c=blue, layer='c2' )
         elif marker == 'd':
-            diamond = np.array([ [ra-w, dec], [ra, dec-w], [ra+w, dec], [ra, dec+w] ])
-            self.fig.show_polygons( [diamond], color='orange', lw=3 )
-            self.fig.show_markers( ra, dec, marker='+', c='orange' )
+            diamond = np.array([ [ra-w, dec], [ra, dec-h], [ra+w, dec], [ra, dec+h] ])
+            self.fig.show_polygons( [diamond], color=orange, lw=3, layer='d1' )
+            if center: self.fig.show_markers( ra, dec, marker='+', c=orange, layer='d2' )
         elif marker == 'a':
-            self.fig.show_arrows( ra+5*w, dec, -4*w, 0.0, color='red', lw=2 )
-            self.fig.show_arrows( ra, dec+5*w, 0.0, -4*w, color='red', lw=2 )
-            self.fig.show_markers( ra, dec, marker='+', c='red' )
+            self.fig.show_arrows( ra+5*w, dec, -4*w, 0.0, color=red, lw=2, layer='t1' )
+            self.fig.show_arrows( ra, dec+5*h, 0.0, -4*h, color=red, lw=2, layer='t2' )
+            if center: self.fig.show_markers( ra, dec, marker='+', c=red, layer='t3' )
         else:
             raise ValueError('marker must be one of [s,c,a,d]!')
     
-    def add_offsets(self):
+    def add_offset_stars(self):
         """
-        Marks the offset stars on the plot
+        Have the user choose up to 3 offset stars and add
+         them to the plot
         """
-        # choose offset stars
-        # fit for local Gaussian
-        # get angular seperation (convert to arcseconds)
-        # mark center on plot and add annotation
-        pass
+        self.remove_offset_stars()  # clear any old ones that may be present
+        for i in range(3):
+            if i == 0:
+                self.annotations.append( plt.annotate('From star\nto target:', (0.8, 0.9), 
+                                         xycoords='axes fraction', weight='bold', color=red) )
+                raw_input('\n\nHit enter, then choose your first offset star.\n')
+            else:
+                inn = raw_input('\n\nHit enter and choose another offset star, or type "d" to be done.\n')
+                if 'd' in inn.lower():
+                    break
+            ra,dec = self.get_star()
+            self.add_object( ra, dec, wcs=True, marker=['s','c','d'][i] )
+
+            osRA, osDec = self.calc_distance(ra, dec)
+            # figure out whether star is N,E,S,W
+            #  The labels are direction from offset star to target!
+            if ra>self.ra:
+                rdir = 'W'
+            else:
+                rdir = 'E'
+            if dec>self.dec:
+                ddir = 'S'
+            else:
+                ddir = 'N'
+            self.annotations.append( plt.annotate('RA: %.2f"%s \nDec: %.2f"%s' %(osRA, rdir, osDec, ddir),
+                         (0.8, 0.8-0.08*i), xycoords='axes fraction', 
+                         weight='bold', color=[green,blue,orange][i]) )
+
+    def remove_offset_stars(self):
+        """
+        Removes all offsets stars from image.
+        """
+        for ann in self.annotations:
+            ann.remove()
+        self.annotations = []
+        for layer in ['s1','s2','c1','c2','d1','d2']:
+            try:
+                self.fig.remove_layer( layer )
+            except:
+                # get an error if that one doesn't exist
+                pass
+
+    def calc_distance(self, ra, dec):
+        """
+        Calculates the distances (in arcseconds) between
+         self.ra,self.dec and ra,dec, in each dimension.
+        Returns delta(RA), delta(Dec)
+        """
+        dRA = coord.ang_sep(self.ra, self.dec, ra, self.dec)*3600.0
+        dDec = coord.ang_sep(self.ra, self.dec, self.ra, dec)*3600.0
+        return dRA, dDec
+
