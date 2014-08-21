@@ -52,7 +52,7 @@ class FinderMaker(object):
         self.annotations = []
         # make sure we have one of the allowed input combinations
         if image != None:
-            if image.rsplit('.')[-1].lower() != 'fits':
+            if image.rsplit('.')[-1].lower() not in ['fit','fits']:
                 raise ValueError('Image must be in fits format.')
             else:
                 self.image = image
