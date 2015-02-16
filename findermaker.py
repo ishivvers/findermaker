@@ -243,7 +243,7 @@ class FinderMaker(object):
                 plt.sca( curax )
             return ra, dec
         
-    def add_object(self, x, y, wcs=False, marker='s', s=10.0, center=None):
+    def add_object(self, x, y, wcs=False, marker='s', s=10, center=None):
         """
         Marks the target (at pixel number x,y) on the plot.
         If WCS == True, x,y must be in WCS.
@@ -292,13 +292,16 @@ class FinderMaker(object):
         self.remove_offset_stars()  # clear any old ones that may be present
         for i in range(3):
             if i == 0:
+                sra,sdec = coord.dec2s(self.ra, self.dec)
+                plt.annotate('RA:     %s\nDEC: %s'%(sra,sdec), (0.35, 0.9), xycoords='axes fraction',
+                             size='large', weight='bold', ha='left', color=red)
                 self.annotations.append( plt.annotate('From star\nto target:', (0.8, 0.9), 
                                          xycoords='axes fraction', weight='bold', color=red) )
-                raw_input('\n\nHit enter, then choose your first offset star.\n')
+                raw_input( '\n\nHit enter, then choose your first offset star.\n' )
             else:
-                inn = raw_input('\n\nHit enter and choose another offset star, or type "d" to be done.\n')
-                if 'd' in inn.lower():
-                    break
+                inn = raw_input('\nHit enter and choose another offset star, or type "q" to quit.\n')
+                if 'q' in inn.lower():
+                    return
             ra,dec = self.get_star()
             self.add_object( ra, dec, wcs=True, marker=['s','c','d'][i] )
 
