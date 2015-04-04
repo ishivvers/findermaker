@@ -299,11 +299,11 @@ class FinderMaker(object):
                                          xycoords='axes fraction', weight='bold', color=red) )
                 raw_input( '\n\nHit enter, then choose your first offset star.\n' )
             else:
-                inn = raw_input('\nHit enter and choose another offset star, or type "q" to quit.\n')
-                if 'q' in inn.lower():
+                inn = raw_input('\nHit enter and choose another offset star, or type "q" or "d" to quit.\n')
+                if 'q' in inn.lower() or 'd' in inn.lower():
                     return
             ra,dec = self.get_star()
-            self.add_object( ra, dec, wcs=True, marker=['s','c','d'][i] )
+            self.add_object( ra, dec, wcs=True, marker=['c','d','s'][i] )
 
             osRA, osDec = self.calc_distance(ra, dec)
             # figure out whether star is N,E,S,W
