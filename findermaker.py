@@ -318,7 +318,7 @@ class FinderMaker(object):
                 ddir = 'N'
             self.annotations.append( plt.annotate('RA: %.2f"%s \nDec: %.2f"%s' %(osRA, rdir, osDec, ddir),
                          (0.8, 0.8-0.08*i), xycoords='axes fraction', 
-                         weight='bold', color=[green,blue,orange][i]) )
+                         weight='bold', color=[blue,orange,green][i]) )
 
     def remove_offset_stars(self):
         """
