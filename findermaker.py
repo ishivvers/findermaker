@@ -10,7 +10,7 @@ import aplpy
 import os
 import time
 from subprocess import Popen, PIPE
-from astro import coord
+import coord
 from astrometryClient.client import Client as anClient
 import pyfits as pf
 import numpy as np
