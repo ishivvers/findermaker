@@ -11,7 +11,7 @@ import os
 import time
 from subprocess import Popen, PIPE
 import coord
-from astrometryClient.client import Client as anClient
+#from astrometryClient.client import Client as anClient
 import pyfits as pf
 import numpy as np
 import matplotlib.pyplot as plt
@@ -101,6 +101,7 @@ class FinderMaker(object):
         Interact with astrometry.net to get the WCS for our image, using the 
          astrometry client code.
         """
+        raise Exception( 'Sorry, this feature does not work!' )
         # connect to astrometry.net
         supernova_key = 'jhvrmcmwgufgmsrw'
         supernova_url = 'http://supernova.astrometry.net/api/'
