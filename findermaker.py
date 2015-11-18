@@ -61,11 +61,8 @@ class FinderMaker(object):
             self.image = None
         # parse input ra and dec (can be sexagesimal or decimal degrees)
         if (ra != None) & (dec != None):
-            try:
-                self.ra = float(ra)
-                self.dec = float(dec)
-            except:
-                self.ra, self.dec = coord.s2dec( ra, dec )
+            self.ra = coord.parse_ra( ra )
+            self.dec = coord.parse_dec( dec )
         else:
             self.ra = None
             self.dec = None
