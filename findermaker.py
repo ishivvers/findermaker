@@ -11,12 +11,13 @@ import os
 import time
 from subprocess import Popen, PIPE
 import coord
-#from astrometryClient.client import Client as anClient
+from astrometryClient.client import Client as anClient
 import pyfits as pf
 import numpy as np
 import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
 from scipy.optimize import leastsq
+import wget
 
 # a hackaround for a compass rose in aplpy
 def initCompass(self, parent):
@@ -150,8 +151,7 @@ class FinderMaker(object):
         # download the new image
         print '\n\nGrabbing solved image\n\n'
         url = nova_url.replace('api','new_fits_file/%i' %jobID)
-        cmd = 'wget -O %s %s' %(new_image, url)
-        os.system( cmd )
+        wget.download( url, out=new_image )
         self.image = new_image
     
     def get_dss_image(self, name='finder_field.fits', size=10.0):
@@ -160,9 +160,8 @@ class FinderMaker(object):
         """
         url = "http://archive.stsci.edu/cgi-bin/dss_search?v=3&r=%.8f&d=%.8f$" %(self.ra, self.dec) +\
               "&h=%.2f&w=%.2f&f=fits&c=none&fov=NONE&e=J2000" %(size, size)
-        cmd = 'wget "%s" -O %s' %(url, name)
         print 'Downloading image.'
-        os.system( cmd )
+        wget.download( url, out=name )
         self.image = name
     
     def build_plot(self):
