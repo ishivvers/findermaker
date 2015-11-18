@@ -101,7 +101,6 @@ class FinderMaker(object):
         Interact with astrometry.net to get the WCS for our image, using the 
          astrometry client code.
         """
-        raise Exception( 'Sorry, this feature does not work!' )
         # connect to astrometry.net
         supernova_key = 'jhvrmcmwgufgmsrw'
         supernova_url = 'http://supernova.astrometry.net/api/'
