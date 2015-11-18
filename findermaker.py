@@ -150,6 +150,10 @@ class FinderMaker(object):
         # download the new image
         print '\n\nGrabbing solved image\n\n'
         url = nova_url.replace('api','new_fits_file/%i' %jobID)
+        try:
+            os.remove( new_image )
+        except OSerror:
+            pass
         wget.download( url, out=new_image )
         self.image = new_image
     
@@ -160,6 +164,10 @@ class FinderMaker(object):
         url = "http://archive.stsci.edu/cgi-bin/dss_search?v=3&r=%.8f&d=%.8f$" %(self.ra, self.dec) +\
               "&h=%.2f&w=%.2f&f=fits&c=none&fov=NONE&e=J2000" %(size, size)
         print 'Downloading image.'
+        try:
+            os.remove( name )
+        except OSerror:
+            pass
         wget.download( url, out=name )
         self.image = name
     
