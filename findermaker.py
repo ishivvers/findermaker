@@ -1,9 +1,11 @@
 """
-A finder chart maker.
+A finder chart maker, designed for use with transients.
 
+TO USE:
+> import findermaker
+> findermaker.FinderMaker(ra='r.a. string',dec='declination string',name='object name')
 
-To Do:
- - verify that astrometry.net upload works properly
+-Isaac Shivvers, 2015
 """
 
 import aplpy
