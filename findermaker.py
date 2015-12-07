@@ -152,7 +152,7 @@ class FinderMaker(object):
         url = nova_url.replace('api','new_fits_file/%i' %jobID)
         try:
             os.remove( new_image )
-        except OSerror:
+        except OSError:
             pass
         wget.download( url, out=new_image )
         self.image = new_image
@@ -166,7 +166,7 @@ class FinderMaker(object):
         print 'Downloading image.'
         try:
             os.remove( name )
-        except OSerror:
+        except OSError:
             pass
         wget.download( url, out=name )
         self.image = name
