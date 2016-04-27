@@ -192,15 +192,27 @@ class FinderMaker(object):
         return A*np.exp(-((x-x0)**2/(2*sigmaX**2) + (y-y0)**2/(2*sigmaY**2))) + C
 
     def _gauss2D_residuals(self, params, z, x, y):
-        return z - self._gauss2D(params, x, y) 
-        
-    def get_star(self, cutout=10.0, error_plot=None):
+        return z - self._gauss2D(params, x, y)
+
+    def _plane(self, params, x, y):
+        a, bx, by = params
+        return a + bx*x + by*y
+
+    def _plane_residuals(self, params, z, x, y):
+        return z - self._plane(params, x, y)
+
+    def get_star(self, cutout=10.0, error_plot=None, fit_plane=2):
         """
         Get a single star from the user interacting with the image.
         Star must be bright enough to fit a Gaussian to it!
         cutout is the region size to consider during fitting (in arcseconds).
         Returns best-fit coordinates (in WCS).
-        If error_plot == True, will plot up cutout and the best-fit Gaussian.
+        If error_plot > 0, will plot up cutout and the best-fit Gaussian.
+          If error_plot > 1, will plot background fitting result in addition.
+        fit_plane must be an integer describing the size of the background region to 
+         subtract.  fit_plane == 0: none
+                    fit_plane == 1: same size as cutout
+                    fit_plane > 2: size = fit_plane*cutout
         """
         if error_plot == None:
             error_plot = self.diagnostics
@@ -217,17 +229,52 @@ class FinderMaker(object):
         # get a subarray to fit the Gaussian to
         [xmin,xmax, ymin,ymax] = map( lambda l: int(round(l)), 
                                       [x-w,x+w, y-w,y+w] )
-        subarray = self.hdu[0].data[ymin:ymax, xmin:xmax]
+        subarray = np.copy(self.hdu[0].data[ymin:ymax, xmin:xmax]).astype(float)
         X = np.arange(xmin,xmax) # keeping track of the true pixel
         Y = np.arange(ymin,ymax) #  numbers of the subarray
         XX,YY = np.meshgrid( X,Y )
-        # now fit a 2D Gaussian to it
-        maximum = np.max(subarray)
-        inparams = [maximum, x,y, w/5, w/5, np.median(subarray)] # amp, x, y, sigx, sigy, constant
         # need to make everything 1D
         X = XX.reshape( XX.shape[0]*XX.shape[1] )
         Y = YY.reshape( YY.shape[0]*YY.shape[1] )
         Z = subarray.reshape( subarray.shape[0]*subarray.shape[1] )
+
+        if fit_plane:
+            # fit and subtract a 2d surface fit_plane*cutout in dimension
+            f = fit_plane
+            [bgxmin,bgxmax, bgymin,bgymax] = map( lambda l: int(round(l)), 
+                                                  [x-f*w,x+f*w, y-f*w,y+f*w] )
+            bgarray = np.copy(self.hdu[0].data[bgymin-1:bgymax, bgxmin-1:bgxmax]).astype(float)
+            bgX = np.arange(bgxmin-1,bgxmax, dtype=float) # keeping track of the true pixel
+            bgY = np.arange(bgymin-1,bgymax, dtype=float) #  numbers of the subarray
+            bgXX,bgYY = np.meshgrid( bgX,bgY )
+            bgX = bgXX.reshape( bgXX.shape[0]*bgXX.shape[1] )
+            bgY = bgYY.reshape( bgYY.shape[0]*bgYY.shape[1] )
+            bgZ = bgarray.reshape( bgarray.shape[0]*bgarray.shape[1] )
+
+            fit_params, success = leastsq(self._plane_residuals,
+                                  [np.min(bgZ),0.0, 0.0],
+                                  args=(bgZ, bgX, bgY))
+            if not success:
+                print 'background fitting failed!'
+                return None
+            else:
+                plane = self._plane(fit_params, X, Y)
+                Z -= plane
+                if error_plot > 1:
+                    curax = plt.gca()  # need to manage current axis variable
+                    fig = plt.figure()
+                    ax = Axes3D(fig)
+                    ax.plot_wireframe(bgXX,bgYY,bgarray, color='k')
+                    ax.plot_wireframe(bgXX,bgYY, self._plane(fit_params, bgXX, bgYY), color='r')
+                    plt.xlabel('RA (px)')
+                    plt.ylabel('Dec (px)')
+                    plt.title(self.image+' ::: BG fitting')
+                    plt.show()
+                    plt.sca( curax )
+
+        # now fit a 2D Gaussian to it
+        maximum = np.max(Z)
+        inparams = [maximum, x,y, w/5, w/5, np.median(Z)] # amp, x, y, sigx, sigy, constant
         fit_params, success = leastsq(self._gauss2D_residuals, inparams, args=(Z, X, Y))
         if not success:
             return None
@@ -239,7 +286,8 @@ class FinderMaker(object):
                 curax = plt.gca()  # need to manage current axis variable
                 fig = plt.figure()
                 ax = Axes3D(fig)
-                ax.plot_wireframe(XX,YY,subarray, color='k')
+                ZZ = Z.reshape( (subarray.shape[0], subarray.shape[1]) )
+                ax.plot_wireframe(XX,YY,ZZ, color='k')
                 ax.plot_wireframe(XX,YY, self._gauss2D(fit_params, XX, YY), color='r')
                 ax.scatter3D( fit_params[1], fit_params[2], 
                               fit_params[0]+fit_params[5], color='r', s=40 )
